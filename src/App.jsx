@@ -1,12 +1,12 @@
-import { useState } from 'react'
-import FibonacciTiles from './FibonacciTiles.jsx'
+// src/App.jsx
+import FibonacciTiles from './components/FibonacciTiles/FibonacciTiles'
 import './App.css'
 
 function App() {
   return (
-    <>
+    <div className="App">
       <FibonacciTiles />
-    </>
+    </div>
   )
 }
 
