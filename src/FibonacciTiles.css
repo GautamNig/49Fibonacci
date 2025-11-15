@@ -1,0 +1,310 @@
+/* FibonacciTiles.css */
+.fibonacci-app {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0c0c2e 0%, #1a1a4b 50%, #0c0c2e 100%);
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated Star Background */
+.stars, .twinkling {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.stars {
+  background: #000 url('https://i.imgur.com/YKY28eT.png') repeat top center;
+  z-index: 0;
+}
+
+.twinkling {
+  background: transparent url('https://i.imgur.com/XYMF4ca.png') repeat top center;
+  z-index: 1;
+  animation: move-twink-back 200s linear infinite;
+}
+
+@keyframes move-twink-back {
+  from { background-position: 0 0; }
+  to { background-position: -10000px 5000px; }
+}
+
+.app-header {
+  text-align: center;
+  padding: 30px 20px;
+  position: relative;
+  z-index: 2;
+}
+
+.app-header h1 {
+  font-size: 3.5em;
+  margin: 0;
+  background: linear-gradient(45deg, #FFD700, #FF6B6B, #4ECDC4, #45B7D1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+}
+
+.subtitle {
+  font-size: 1.2em;
+  color: #a0a0e0;
+  margin-top: 10px;
+  font-style: italic;
+}
+
+.app-container {
+  display: flex;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 20px 40px;
+  position: relative;
+  z-index: 2;
+  gap: 30px;
+}
+
+/* Left Panel - Tiles (70%) */
+.tiles-panel {
+  flex: 7;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.grid-container {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.3);
+}
+
+.tiles-grid {
+  display: grid;
+  gap: 12px;
+  margin: 0 auto;
+}
+
+.tile {
+  aspect-ratio: 1;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.4s ease;
+  position: relative;
+  overflow: hidden;
+  font-size: 12px;
+  min-width: 60px;
+  min-height: 60px;
+}
+
+.tile.available {
+  background: rgba(255, 255, 255, 0.1);
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.tile.available:hover {
+  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+}
+
+.tile.purchased {
+  cursor: default;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.tile-content {
+  text-align: center;
+  padding: 5px;
+  z-index: 2;
+  position: relative;
+}
+
+.owner {
+  font-weight: bold;
+  font-size: 10px;
+  margin-bottom: 2px;
+  line-height: 1.1;
+  color: #000;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+.price, .price-paid {
+  font-size: 10px;
+  font-weight: bold;
+  color: #333;
+}
+
+.tile-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at center, transparent 30%, rgba(255, 255, 255, 0.1) 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.tile.available:hover .tile-glow {
+  opacity: 1;
+}
+
+/* Right Panel - Info (30%) */
+.info-panel {
+  flex: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stats-card, .leaderboard-card, .progression-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  padding: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
+}
+
+.stats-card h3, .leaderboard-card h3, .progression-card h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #FFD700;
+  text-align: center;
+  font-size: 1.3em;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stat-item:last-child {
+  border-bottom: none;
+}
+
+.price-highlight {
+  color: #FFD700;
+  font-weight: bold;
+  font-size: 1.2em;
+}
+
+.next-price {
+  color: #4ECDC4;
+  font-weight: bold;
+}
+
+.leaderboard-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.leaderboard-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.leaderboard-item:last-child {
+  border-bottom: none;
+}
+
+.owner-name {
+  font-weight: bold;
+  color: #FFD700;
+}
+
+.tile-count {
+  color: #a0a0e0;
+}
+
+.empty-state {
+  text-align: center;
+  color: #a0a0e0;
+  font-style: italic;
+  padding: 20px;
+}
+
+.progression-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progression-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.progression-item.current {
+  background: rgba(255, 215, 0, 0.2);
+  border: 1px solid rgba(255, 215, 0, 0.5);
+}
+
+.progression-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Scrollbar Styling */
+.leaderboard-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.leaderboard-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.leaderboard-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 215, 0, 0.3);
+  border-radius: 3px;
+}
+
+.leaderboard-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 215, 0, 0.5);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .app-container {
+    flex-direction: column;
+  }
+  
+  .tiles-panel, .info-panel {
+    flex: none;
+    width: 100%;
+  }
+  
+  .grid-container {
+    padding: 20px;
+  }
+  
+  .tile {
+    min-width: 50px;
+    min-height: 50px;
+  }
+}
