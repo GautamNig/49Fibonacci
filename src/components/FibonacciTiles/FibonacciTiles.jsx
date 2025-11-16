@@ -1,7 +1,8 @@
 // src/components/FibonacciTiles/FibonacciTiles.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getFibonacciPrice } from '../../utils/fibonacci';
 import { supabase } from '../../lib/supabase';
+import { realtimeService } from '../../services/realtimeService';
 import TileGrid from './TileGrid';
 import InfoPanel from './InfoPanel';
 import PurchaseModal from './PurchaseModal';
@@ -25,10 +26,10 @@ const FibonacciTiles = () => {
     personalMessage: ''
   });
 
-  // Load data from Supabase
-  const loadGameData = async () => {
+  // Memoized data loader
+  const loadGameData = useCallback(async () => {
     try {
-      console.log('Loading game data...');
+      console.log('🔄 Loading game data from database...');
       
       // Load tiles with celebrity data
       const { data: tilesData, error: tilesError } = await supabase
@@ -48,10 +49,7 @@ const FibonacciTiles = () => {
         `)
         .order('id');
 
-      if (tilesError) {
-        console.error('Tiles error:', tilesError);
-        throw tilesError;
-      }
+      if (tilesError) throw tilesError;
 
       // Load game state
       const { data: gameState, error: gameError } = await supabase
@@ -59,12 +57,12 @@ const FibonacciTiles = () => {
         .select('*')
         .single();
 
-      if (gameError) {
-        console.error('Game state error:', gameError);
-        throw gameError;
-      }
+      if (gameError) throw gameError;
 
-      console.log('Loaded data:', { tilesCount: tilesData?.length, gameState });
+      console.log('✅ Data loaded:', { 
+        tiles: tilesData?.length, 
+        totalPurchased: gameState.total_purchased 
+      });
 
       // Transform tiles data
       const transformedTiles = tilesData.map(tile => ({
@@ -80,17 +78,16 @@ const FibonacciTiles = () => {
       setTotalPurchased(gameState.total_purchased);
       setCurrentPrice(getFibonacciPrice(gameState.total_purchased));
     } catch (error) {
-      console.error('Error loading game data:', error);
-      // Fallback to local state
+      console.error('❌ Error loading game data:', error);
       initializeLocalTiles();
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Initialize with local state as fallback
-  const initializeLocalTiles = () => {
-    console.log('Initializing local tiles as fallback');
+  const initializeLocalTiles = useCallback(() => {
+    console.log('🔄 Initializing local tiles as fallback');
     const initialTiles = Array(TOTAL_TILES).fill(null).map((_, index) => ({
       id: index,
       owner: null,
@@ -102,85 +99,40 @@ const FibonacciTiles = () => {
     setTiles(initialTiles);
     setTotalPurchased(0);
     setCurrentPrice(1);
-  };
+  }, [TOTAL_TILES]);
 
-  // Enhanced real-time subscriptions
-  const subscribeToUpdates = () => {
-    console.log('Setting up real-time subscriptions...');
+  // Real-time event handler
+  const handleRealtimeUpdate = useCallback((event, payload) => {
+    console.log('🎯 Real-time event received:', event, payload);
+    
+    switch (event) {
+      case 'TILE_UPDATED':
+      case 'TILE_INSERTED':
+      case 'GAME_STATE_UPDATED':
+      case 'CELEBRITY_UPDATED':
+        console.log('🔄 Reloading data due to real-time update...');
+        loadGameData();
+        break;
+      default:
+        console.log('Unknown real-time event:', event);
+    }
+  }, [loadGameData]);
 
-    // Subscribe to tiles table changes
-    const tilesSubscription = supabase
-      .channel('tiles-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // INSERT, UPDATE, DELETE
-          schema: 'public',
-          table: 'tiles'
-        },
-        (payload) => {
-          console.log('Tiles change detected:', payload);
-          loadGameData(); // Reload all data when tiles change
-        }
-      )
-      .subscribe((status) => {
-        console.log('Tiles subscription status:', status);
-      });
-
-    // Subscribe to game_state table changes
-    const gameStateSubscription = supabase
-      .channel('game-state-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'game_state'
-        },
-        (payload) => {
-          console.log('Game state change detected:', payload);
-          loadGameData(); // Reload all data when game state changes
-        }
-      )
-      .subscribe((status) => {
-        console.log('Game state subscription status:', status);
-      });
-
-    // Subscribe to celebrities table changes (in case celebrity data updates)
-    const celebritiesSubscription = supabase
-      .channel('celebrities-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'celebrities'
-        },
-        (payload) => {
-          console.log('Celebrities change detected:', payload);
-          loadGameData();
-        }
-      )
-      .subscribe((status) => {
-        console.log('Celebrities subscription status:', status);
-      });
-
-    return () => {
-      console.log('Cleaning up subscriptions');
-      tilesSubscription.unsubscribe();
-      gameStateSubscription.unsubscribe();
-      celebritiesSubscription.unsubscribe();
-    };
-  };
-
+  // Setup real-time subscriptions
   useEffect(() => {
+    console.log('🔌 Setting up real-time subscriptions...');
+    
+    // Load initial data
     loadGameData();
-    const unsubscribe = subscribeToUpdates();
+    
+    // Subscribe to real-time updates
+    const unsubscribe = realtimeService.subscribe(handleRealtimeUpdate);
     
     return () => {
+      console.log('🧹 Cleaning up real-time subscriptions');
       unsubscribe();
     };
-  }, []);
+  }, [loadGameData, handleRealtimeUpdate]);
 
   const handleTileClick = (tile) => {
     if (tile.isPurchased) return;
@@ -200,7 +152,7 @@ const FibonacciTiles = () => {
     if (!selectedTile || !purchaseForm.celebrityName.trim()) return;
 
     try {
-      console.log('Starting purchase process...', {
+      console.log('💰 Starting purchase process...', {
         tileId: selectedTile.id,
         celebrityName: purchaseForm.celebrityName,
         price: selectedTile.price
@@ -219,28 +171,28 @@ const FibonacciTiles = () => {
       });
 
       if (error) {
-        console.error('RPC Error:', error);
+        console.error('❌ RPC Error:', error);
         throw error;
       }
 
-      console.log('Purchase successful, celebrity ID:', data);
+      console.log('✅ Purchase successful, celebrity ID:', data);
       
       // Show success message
-      alert(`Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
+      alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
       
-      // Close modal immediately
+      // Close modal
       setShowModal(false);
       setSelectedTile(null);
 
-      // The real-time subscription will automatically reload the data
-      // But we can also force a reload to be safe
+      // Force immediate data reload (in case real-time is delayed)
       setTimeout(() => {
+        console.log('🔄 Force reloading data after purchase...');
         loadGameData();
-      }, 1000);
+      }, 500);
       
     } catch (error) {
-      console.error('Error purchasing tile:', error);
-      alert(`Error purchasing tile: ${error.message}. Please try again.`);
+      console.error('❌ Error purchasing tile:', error);
+      alert(`❌ Error purchasing tile: ${error.message}. Please try again.`);
     }
   };
 
@@ -277,6 +229,9 @@ const FibonacciTiles = () => {
       <header className="app-header">
         <h1>49Fibonacci Tiles</h1>
         <div className="subtitle">Where Every Purchase Changes the Universe</div>
+        <div className="realtime-indicator">
+          🔄 Real-time Updates Active
+        </div>
       </header>
 
       <div className="app-container">
