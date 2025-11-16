@@ -170,3 +170,27 @@ SELECT * FROM pg_publication;
 SELECT schemaname, tablename 
 FROM pg_publication_tables 
 WHERE pubname = 'supabase_realtime';
+
+
+-- Enable public access to storage bucket
+CREATE POLICY "Allow public read access" ON storage.objects
+FOR SELECT USING (bucket_id = 'celebrity-images');
+
+CREATE POLICY "Allow public upload" ON storage.objects
+FOR INSERT WITH CHECK (bucket_id = 'celebrity-images');
+
+CREATE POLICY "Allow public update" ON storage.objects
+FOR UPDATE USING (bucket_id = 'celebrity-images');
+
+-- Enable public access to celebrity-images bucket
+DROP POLICY IF EXISTS "Allow public read access" ON storage.objects;
+CREATE POLICY "Allow public read access" ON storage.objects
+FOR SELECT USING (bucket_id = 'celebrity-images');
+
+DROP POLICY IF EXISTS "Allow public upload" ON storage.objects;
+CREATE POLICY "Allow public upload" ON storage.objects
+FOR INSERT WITH CHECK (bucket_id = 'celebrity-images');
+
+DROP POLICY IF EXISTS "Allow public update" ON storage.objects;
+CREATE POLICY "Allow public update" ON storage.objects
+FOR UPDATE USING (bucket_id = 'celebrity-images');

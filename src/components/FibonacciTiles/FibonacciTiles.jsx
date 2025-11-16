@@ -1,8 +1,7 @@
 // src/components/FibonacciTiles/FibonacciTiles.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { getFibonacciPrice } from '../../utils/fibonacci';
-import { supabase } from '../../lib/supabase';
-import { realtimeService } from '../../services/realtimeService';
+import { supabase, listFilesInBucket } from '../../lib/supabase';
 import TileGrid from './TileGrid';
 import InfoPanel from './InfoPanel';
 import PurchaseModal from './PurchaseModal';
@@ -10,7 +9,7 @@ import './FibonacciTiles.css';
 
 const FibonacciTiles = () => {
   const TOTAL_TILES = 49;
-
+  
   const [tiles, setTiles] = useState([]);
   const [totalPurchased, setTotalPurchased] = useState(0);
   const [currentPrice, setCurrentPrice] = useState(1);
@@ -25,12 +24,13 @@ const FibonacciTiles = () => {
     description: '',
     personalMessage: ''
   });
+  const [bucketFiles, setBucketFiles] = useState([]);
 
-  // Memoized data loader
+  // Load data from Supabase
   const loadGameData = useCallback(async () => {
     try {
       console.log('🔄 Loading game data from database...');
-
+      
       // Load tiles with celebrity data
       const { data: tilesData, error: tilesError } = await supabase
         .from('tiles')
@@ -59,9 +59,9 @@ const FibonacciTiles = () => {
 
       if (gameError) throw gameError;
 
-      console.log('✅ Data loaded:', {
-        tiles: tilesData?.length,
-        totalPurchased: gameState.total_purchased
+      console.log('✅ Data loaded:', { 
+        tiles: tilesData?.length, 
+        totalPurchased: gameState.total_purchased 
       });
 
       // Transform tiles data
@@ -101,45 +101,33 @@ const FibonacciTiles = () => {
     setCurrentPrice(1);
   }, [TOTAL_TILES]);
 
-  // Real-time event handler
-  const handleRealtimeUpdate = useCallback((event, payload) => {
-    console.log('🎯 Real-time event received:', event, payload);
-
-    switch (event) {
-      case 'TILE_UPDATED':
-      case 'TILE_INSERTED':
-      case 'GAME_STATE_UPDATED':
-      case 'CELEBRITY_UPDATED':
-        console.log('🔄 Reloading data due to real-time update...');
-        loadGameData();
-        break;
-      default:
-        console.log('Unknown real-time event:', event);
-    }
-  }, [loadGameData]);
-
   // Setup real-time subscriptions
   useEffect(() => {
     console.log('🔌 Setting up real-time subscriptions...');
-
+    
     // Load initial data
     loadGameData();
-
+    
     // Subscribe to real-time updates
-    const unsubscribe = realtimeService.subscribe(handleRealtimeUpdate);
+    const subscription = supabase
+      .channel('tiles-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'tiles' },
+        () => {
+          loadGameData();
+        }
+      )
+      .subscribe();
 
     return () => {
-      console.log('🧹 Cleaning up real-time subscriptions');
-      unsubscribe();
+      subscription.unsubscribe();
     };
-  }, [loadGameData, handleRealtimeUpdate]);
+  }, [loadGameData]);
 
-  // In your FibonacciTiles.jsx, update the handleTileClick function:
   const handleTileClick = (tile) => {
     if (tile.isPurchased) return;
     setSelectedTile(tile);
     setShowModal(true);
-    // Reset form completely
     setPurchaseForm({
       celebrityName: '',
       email: '',
@@ -178,20 +166,20 @@ const FibonacciTiles = () => {
       }
 
       console.log('✅ Purchase successful, celebrity ID:', data);
-
+      
       // Show success message
-      // alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
-
+      alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
+      
       // Close modal
       setShowModal(false);
       setSelectedTile(null);
 
-      // Force immediate data reload (in case real-time is delayed)
+      // Reload data and bucket files
       setTimeout(() => {
-        console.log('🔄 Force reloading data after purchase...');
         loadGameData();
+        listFilesInBucket().then(setBucketFiles);
       }, 500);
-
+      
     } catch (error) {
       console.error('❌ Error purchasing tile:', error);
       alert(`❌ Error purchasing tile: ${error.message}. Please try again.`);
@@ -205,19 +193,9 @@ const FibonacciTiles = () => {
     }));
   };
 
-  // And update the handleCloseModal function:
   const handleCloseModal = () => {
     setShowModal(false);
     setSelectedTile(null);
-    // Also reset form when closing without purchase
-    setPurchaseForm({
-      celebrityName: '',
-      email: '',
-      profileImageUrl: '',
-      quote: '',
-      description: '',
-      personalMessage: ''
-    });
   };
 
   if (loading) {
@@ -237,13 +215,10 @@ const FibonacciTiles = () => {
     <div className="fibonacci-app">
       <div className="stars"></div>
       <div className="twinkling"></div>
-
+      
       <header className="app-header">
         <h1>49Fibonacci Tiles</h1>
         <div className="subtitle">Where Every Purchase Changes the Universe</div>
-        <div className="realtime-indicator">
-          🔄 Real-time Updates Active
-        </div>
       </header>
 
       <div className="app-container">
