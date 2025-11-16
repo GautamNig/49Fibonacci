@@ -1,5 +1,6 @@
 // src/components/FibonacciTiles/PurchaseModal.jsx
-import React from 'react';
+import React, { useState } from 'react';
+import { uploadImage } from '../../lib/supabase';
 
 const PurchaseModal = ({ 
   showModal, 
@@ -9,11 +10,59 @@ const PurchaseModal = ({
   onPurchase, 
   onFormChange 
 }) => {
+  const [uploading, setUploading] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
+
   if (!showModal || !selectedTile) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onPurchase();
+    await onPurchase();
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file size (2MB max)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Image size must be less than 2MB');
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file');
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+
+      // Upload to Supabase Storage
+      const publicUrl = await uploadImage(file, purchaseForm.celebrityName);
+      onFormChange('profileImageUrl', publicUrl);
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Error uploading image. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeImage = () => {
+    setImagePreview(null);
+    onFormChange('profileImageUrl', '');
+    // Reset file input
+    const fileInput = document.getElementById('profileImage');
+    if (fileInput) fileInput.value = '';
   };
 
   return (
@@ -24,6 +73,7 @@ const PurchaseModal = ({
           <button 
             className="close-button"
             onClick={onClose}
+            type="button"
           >
             ×
           </button>
@@ -58,20 +108,62 @@ const PurchaseModal = ({
               <input
                 type="email"
                 id="email"
-                placeholder="Enter your email (optional)"
+                placeholder="Enter your email"
                 value={purchaseForm.email}
                 onChange={(e) => onFormChange('email', e.target.value)}
               />
             </div>
 
             <div className="form-group">
-              <label htmlFor="message">Personal Message</label>
+              <label htmlFor="profileImage">Profile Image (Max 2MB)</label>
+              <input
+                type="file"
+                id="profileImage"
+                accept="image/*"
+                onChange={handleImageUpload}
+                disabled={uploading}
+              />
+              {uploading && <div className="uploading-text">Uploading...</div>}
+              {imagePreview && (
+                <div className="image-preview">
+                  <img src={imagePreview} alt="Preview" />
+                  <button type="button" onClick={removeImage} className="remove-image">
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="quote">Inspirational Quote</label>
+              <input
+                type="text"
+                id="quote"
+                placeholder="Enter your favorite quote (optional)"
+                value={purchaseForm.quote}
+                onChange={(e) => onFormChange('quote', e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="description">About You</label>
               <textarea
-                id="message"
-                placeholder="Add a message to display with your tile (optional)"
+                id="description"
+                placeholder="Tell us about yourself (optional)"
                 rows="3"
-                value={purchaseForm.message}
-                onChange={(e) => onFormChange('message', e.target.value)}
+                value={purchaseForm.description}
+                onChange={(e) => onFormChange('description', e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="personalMessage">Personal Message for Tile</label>
+              <textarea
+                id="personalMessage"
+                placeholder="Add a message to display with your tile (optional)"
+                rows="2"
+                value={purchaseForm.personalMessage}
+                onChange={(e) => onFormChange('personalMessage', e.target.value)}
               />
             </div>
           </div>
@@ -87,9 +179,9 @@ const PurchaseModal = ({
             <button 
               type="submit"
               className="purchase-button"
-              disabled={!purchaseForm.celebrityName.trim()}
+              disabled={!purchaseForm.celebrityName.trim() || uploading}
             >
-              Purchase for ${selectedTile.price}
+              {uploading ? 'Uploading...' : `Purchase for $${selectedTile.price}`}
             </button>
           </div>
         </form>

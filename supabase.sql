@@ -1,22 +1,31 @@
--- Create tables for 49Fibonacci Tiles
+-- Drop existing tables if they exist
+DROP TABLE IF EXISTS transactions CASCADE;
+DROP TABLE IF EXISTS tiles CASCADE;
+DROP TABLE IF EXISTS celebrities CASCADE;
+DROP TABLE IF EXISTS game_state CASCADE;
 
--- Celebrities table
+-- Celebrities table with image support
 CREATE TABLE celebrities (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name VARCHAR(100) UNIQUE NOT NULL,
+    email VARCHAR(255),
+    profile_image_url TEXT,
+    quote TEXT,
+    description TEXT,
     total_tiles INTEGER DEFAULT 0,
     total_spent DECIMAL(15,2) DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
--- Tiles table
+-- Tiles table with enhanced data
 CREATE TABLE tiles (
     id INTEGER PRIMARY KEY, -- 0-48 for 49 tiles
     owner_id UUID REFERENCES celebrities(id),
     purchase_price DECIMAL(15,2),
     purchased_at TIMESTAMP WITH TIME ZONE,
     is_purchased BOOLEAN DEFAULT FALSE,
+    personal_message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
@@ -44,11 +53,18 @@ ALTER TABLE tiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE game_state ENABLE ROW LEVEL SECURITY;
 
--- Create policies for public read access (adjust as needed)
+-- Create policies for public read access
 CREATE POLICY "Allow public read access for celebrities" ON celebrities FOR SELECT USING (true);
 CREATE POLICY "Allow public read access for tiles" ON tiles FOR SELECT USING (true);
 CREATE POLICY "Allow public read access for transactions" ON transactions FOR SELECT USING (true);
 CREATE POLICY "Allow public read access for game_state" ON game_state FOR SELECT USING (true);
+
+-- Allow inserts and updates for tiles and celebrities
+CREATE POLICY "Allow insert for celebrities" ON celebrities FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow update for celebrities" ON celebrities FOR UPDATE USING (true);
+CREATE POLICY "Allow update for tiles" ON tiles FOR UPDATE USING (true);
+CREATE POLICY "Allow update for game_state" ON game_state FOR UPDATE USING (true);
+CREATE POLICY "Allow insert for transactions" ON transactions FOR INSERT WITH CHECK (true);
 
 -- Insert initial tiles (0-48)
 INSERT INTO tiles (id) VALUES 
@@ -61,31 +77,40 @@ INSERT INTO tiles (id) VALUES
 -- Insert initial game state
 INSERT INTO game_state (id, total_purchased, current_price) VALUES (1, 0, 1);
 
--- Create function to handle tile purchase
+-- Create function to handle tile purchase with enhanced data
 CREATE OR REPLACE FUNCTION purchase_tile(
     tile_id INTEGER,
     celebrity_name VARCHAR(100),
+    celebrity_email VARCHAR(255),
+    profile_image_url TEXT,
+    quote TEXT,
+    description TEXT,
+    personal_message TEXT,
     purchase_price DECIMAL(15,2)
 ) RETURNS UUID AS $$
 DECLARE
     celeb_id UUID;
     current_total INTEGER;
-    next_price DECIMAL(15,2);
 BEGIN
-    -- Insert or get celebrity
-    INSERT INTO celebrities (name) 
-    VALUES (celebrity_name)
+    -- Insert or get celebrity with enhanced data
+    INSERT INTO celebrities (name, email, profile_image_url, quote, description) 
+    VALUES (celebrity_name, celebrity_email, profile_image_url, quote, description)
     ON CONFLICT (name) DO UPDATE SET
+        email = EXCLUDED.email,
+        profile_image_url = EXCLUDED.profile_image_url,
+        quote = EXCLUDED.quote,
+        description = EXCLUDED.description,
         total_tiles = celebrities.total_tiles + 1,
         total_spent = celebrities.total_spent + purchase_price,
         updated_at = TIMEZONE('utc'::text, NOW())
     RETURNING id INTO celeb_id;
 
-    -- Update tile
+    -- Update tile with personal message
     UPDATE tiles 
     SET owner_id = celeb_id,
         purchase_price = purchase_price,
         purchased_at = TIMEZONE('utc'::text, NOW()),
+        personal_message = personal_message,
         is_purchased = TRUE,
         updated_at = TIMEZONE('utc'::text, NOW())
     WHERE id = tile_id;
@@ -97,7 +122,7 @@ BEGIN
     -- Update game state
     UPDATE game_state 
     SET total_purchased = total_purchased + 1,
-        current_price = POWER(2, total_purchased) -- Using power for Fibonacci would be complex, we'll handle in app
+        current_price = purchase_price * 2 -- Double the price for next purchase
     WHERE id = 1
     RETURNING total_purchased INTO current_total;
 
