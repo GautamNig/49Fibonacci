@@ -1,5 +1,5 @@
 // src/components/FibonacciTiles/PurchaseModal.jsx
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { uploadImage } from '../../lib/supabase';
 
 const PurchaseModal = ({ 
@@ -12,6 +12,18 @@ const PurchaseModal = ({
 }) => {
   const [uploading, setUploading] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
+  const fileInputRef = useRef(null);
+
+  // Reset form when modal opens/closes
+  React.useEffect(() => {
+    if (showModal) {
+      // Reset image preview when modal opens
+      setImagePreview(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [showModal]);
 
   if (!showModal || !selectedTile) return null;
 
@@ -39,19 +51,55 @@ const PurchaseModal = ({
     setUploading(true);
 
     try {
-      // Create preview
+      // Create preview with proper sizing
       const reader = new FileReader();
       reader.onload = (e) => {
-        setImagePreview(e.target.result);
+        const img = new Image();
+        img.onload = () => {
+          // Create a canvas to resize the image for preview
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Set maximum dimensions for preview
+          const maxWidth = 150;
+          const maxHeight = 150;
+          
+          let { width, height } = img;
+          
+          // Calculate new dimensions while maintaining aspect ratio
+          if (width > height) {
+            if (width > maxWidth) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = (width * maxHeight) / height;
+              height = maxHeight;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          setImagePreview(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.src = e.target.result;
       };
       reader.readAsDataURL(file);
 
       // Upload to Supabase Storage
-      const publicUrl = await uploadImage(file, purchaseForm.celebrityName);
+      const publicUrl = await uploadImage(file, purchaseForm.celebrityName || 'user');
       onFormChange('profileImageUrl', publicUrl);
     } catch (error) {
       console.error('Error uploading image:', error);
       alert('Error uploading image. Please try again.');
+      // Reset on error
+      setImagePreview(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } finally {
       setUploading(false);
     }
@@ -61,8 +109,18 @@ const PurchaseModal = ({
     setImagePreview(null);
     onFormChange('profileImageUrl', '');
     // Reset file input
-    const fileInput = document.getElementById('profileImage');
-    if (fileInput) fileInput.value = '';
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleClose = () => {
+    // Clear all form data when closing
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    onClose();
   };
 
   return (
@@ -72,7 +130,7 @@ const PurchaseModal = ({
           <h2>Purchase Tile #{selectedTile.id + 1}</h2>
           <button 
             className="close-button"
-            onClick={onClose}
+            onClick={handleClose}
             type="button"
           >
             ×
@@ -117,19 +175,29 @@ const PurchaseModal = ({
             <div className="form-group">
               <label htmlFor="profileImage">Profile Image (Max 2MB)</label>
               <input
+                ref={fileInputRef}
                 type="file"
                 id="profileImage"
                 accept="image/*"
                 onChange={handleImageUpload}
                 disabled={uploading}
               />
+              <div className="file-helper">
+                Supported formats: JPG, PNG, GIF. Max size: 2MB
+              </div>
               {uploading && <div className="uploading-text">Uploading...</div>}
               {imagePreview && (
-                <div className="image-preview">
-                  <img src={imagePreview} alt="Preview" />
-                  <button type="button" onClick={removeImage} className="remove-image">
-                    Remove
-                  </button>
+                <div className="image-preview-container">
+                  <div className="image-preview">
+                    <img src={imagePreview} alt="Preview" className="preview-image" />
+                    <button 
+                      type="button" 
+                      onClick={removeImage} 
+                      className="remove-image-btn"
+                    >
+                      ✕ Remove
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -172,7 +240,7 @@ const PurchaseModal = ({
             <button 
               type="button"
               className="cancel-button"
-              onClick={onClose}
+              onClick={handleClose}
             >
               Cancel
             </button>

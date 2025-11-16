@@ -77,62 +77,96 @@ INSERT INTO tiles (id) VALUES
 -- Insert initial game state
 INSERT INTO game_state (id, total_purchased, current_price) VALUES (1, 0, 1);
 
--- Create function to handle tile purchase with enhanced data
+DROP FUNCTION IF EXISTS purchase_tile;
+
 CREATE OR REPLACE FUNCTION purchase_tile(
-    tile_id INTEGER,
-    celebrity_name VARCHAR(100),
-    celebrity_email VARCHAR(255),
-    profile_image_url TEXT,
-    quote TEXT,
-    description TEXT,
-    personal_message TEXT,
-    purchase_price DECIMAL(15,2)
+    p_tile_id INTEGER,
+    p_celebrity_name VARCHAR(100),
+    p_celebrity_email VARCHAR(255),
+    p_profile_image_url TEXT,
+    p_quote TEXT,
+    p_description TEXT,
+    p_personal_message TEXT,
+    p_purchase_price DECIMAL(15,2)
 ) RETURNS UUID AS $$
 DECLARE
-    celeb_id UUID;
-    current_total INTEGER;
+    v_celeb_id UUID;
+    v_current_total INTEGER;
 BEGIN
     -- Insert or get celebrity with enhanced data
     INSERT INTO celebrities (name, email, profile_image_url, quote, description) 
-    VALUES (celebrity_name, celebrity_email, profile_image_url, quote, description)
+    VALUES (p_celebrity_name, p_celebrity_email, p_profile_image_url, p_quote, p_description)
     ON CONFLICT (name) DO UPDATE SET
         email = EXCLUDED.email,
         profile_image_url = EXCLUDED.profile_image_url,
         quote = EXCLUDED.quote,
         description = EXCLUDED.description,
         total_tiles = celebrities.total_tiles + 1,
-        total_spent = celebrities.total_spent + purchase_price,
+        total_spent = celebrities.total_spent + p_purchase_price,
         updated_at = TIMEZONE('utc'::text, NOW())
-    RETURNING id INTO celeb_id;
+    RETURNING id INTO v_celeb_id;
 
     -- Update tile with personal message
     UPDATE tiles 
-    SET owner_id = celeb_id,
-        purchase_price = purchase_price,
+    SET owner_id = v_celeb_id,
+        purchase_price = p_purchase_price,
         purchased_at = TIMEZONE('utc'::text, NOW()),
-        personal_message = personal_message,
+        personal_message = p_personal_message,
         is_purchased = TRUE,
         updated_at = TIMEZONE('utc'::text, NOW())
-    WHERE id = tile_id;
+    WHERE id = p_tile_id;
 
     -- Record transaction
     INSERT INTO transactions (tile_id, celebrity_id, price)
-    VALUES (tile_id, celeb_id, purchase_price);
+    VALUES (p_tile_id, v_celeb_id, p_purchase_price);
 
-    -- Update game state
+    -- Update game state - use Fibonacci calculation from application
     UPDATE game_state 
     SET total_purchased = total_purchased + 1,
-        current_price = purchase_price * 2 -- Double the price for next purchase
+        current_price = p_purchase_price * 2
     WHERE id = 1
-    RETURNING total_purchased INTO current_total;
+    RETURNING total_purchased INTO v_current_total;
 
     -- Update celebrity stats
     UPDATE celebrities 
     SET total_tiles = total_tiles + 1,
-        total_spent = total_spent + purchase_price,
+        total_spent = total_spent + p_purchase_price,
         updated_at = TIMEZONE('utc'::text, NOW())
-    WHERE id = celeb_id;
+    WHERE id = v_celeb_id;
 
-    RETURN celeb_id;
+    RETURN v_celeb_id;
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- Allow public image uploads (run in Supabase SQL editor)
+CREATE POLICY "Allow public image uploads" ON storage.objects
+FOR INSERT TO public WITH CHECK (bucket_id = 'celebrity-images');
+
+CREATE POLICY "Allow public image access" ON storage.objects
+FOR SELECT TO public USING (bucket_id = 'celebrity-images');
+
+
+ALTER TABLE tiles REPLICA IDENTITY FULL;
+ALTER TABLE game_state REPLICA IDENTITY FULL;
+ALTER TABLE celebrities REPLICA IDENTITY FULL;
+ALTER TABLE transactions REPLICA IDENTITY FULL;
+
+
+
+-- Enable real-time for all tables
+BEGIN;
+  -- Drop existing publications if any
+  DROP PUBLICATION IF EXISTS supabase_realtime CASCADE;
+  
+  -- Create new publication
+  CREATE PUBLICATION supabase_realtime FOR ALL TABLES;
+COMMIT;
+
+-- Verify publication
+SELECT * FROM pg_publication;
+
+-- Verify tables are in publication
+SELECT schemaname, tablename 
+FROM pg_publication_tables 
+WHERE pubname = 'supabase_realtime';

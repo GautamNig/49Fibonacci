@@ -838,4 +838,99 @@
       opacity: 1;
     }
   }
+
+  /* Image Upload Styles */
+  .file-helper {
+    font-size: 0.8em;
+    color: #a0a0e0;
+    margin-top: 5px;
+    font-style: italic;
+  }
+
+  .uploading-text {
+    color: #FFD700;
+    font-size: 0.8em;
+    margin-top: 5px;
+    font-weight: bold;
+  }
+
+  .image-preview-container {
+    margin-top: 15px;
+  }
+
+  .image-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .preview-image {
+    max-width: 150px;
+    max-height: 150px;
+    width: auto;
+    height: auto;
+    border-radius: 8px;
+    border: 2px solid #FFD700;
+    object-fit: contain;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .remove-image-btn {
+    background: linear-gradient(45deg, #FF6B6B, #FF5252);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8em;
+    font-weight: bold;
+    transition: all 0.3s ease;
+  }
+
+  .remove-image-btn:hover {
+    background: linear-gradient(45deg, #FF5252, #FF0000);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+  }
+
+  /* Form input styles */
+  .form-group input[type="file"] {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: white;
+    width: 100%;
+    font-size: 0.9em;
+    transition: all 0.3s ease;
+  }
+
+  .form-group input[type="file"]:focus {
+    outline: none;
+    border-color: #FFD700;
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+  }
+
+  .form-group input[type="file"]::file-selector-button {
+    background: linear-gradient(45deg, #4ECDC4, #45B7D1);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 10px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+  }
+
+  .form-group input[type="file"]::file-selector-button:hover {
+    background: linear-gradient(45deg, #45B7D1, #4ECDC4);
+    transform: translateY(-1px);
+  }
 }
