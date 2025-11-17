@@ -1055,4 +1055,83 @@
   /* Force CORS handling */
   crossOrigin: "anonymous";
 }
+/* Add to FibonacciTiles.css */
+.paypal-button-wrapper {
+  min-height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.paypal-loading-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.paypal-error-state {
+  background: rgba(255, 0, 0, 0.1);
+  border: 1px solid rgba(255, 0, 0, 0.3);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 15px 0;
+}
+
+.error-solutions {
+  margin-top: 15px;
+}
+
+.error-solutions h5 {
+  color: #ff6b6b;
+  margin-bottom: 10px;
+}
+
+.error-solutions ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.error-solutions li {
+  margin: 5px 0;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.retry-button {
+  background: #0070ba;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.processing-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+  border-radius: 10px;
+}
+
+.processing-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid #ffd700;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 }
