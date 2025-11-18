@@ -72,7 +72,7 @@ const ProgressionCard = ({ totalPurchased }) => {
     <div className="progression-card">
       <h3>📈 Fibonacci Journey</h3>
       <div className="progression-list">
-        {Array.from({ length: 8 }, (_, i) => totalPurchased + i).map(step => (
+        {Array.from({ length: 49 }, (_, i) => totalPurchased + i).map(step => (
           <div 
             key={step} 
             className={`progression-item ${step === totalPurchased ? 'current' : ''}`}
