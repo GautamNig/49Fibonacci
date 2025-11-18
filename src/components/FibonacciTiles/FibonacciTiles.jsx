@@ -144,7 +144,7 @@ const FibonacciTiles = () => {
 
         if (state && state.value === 'true') {
           const lockAge = new Date() - new Date(state.updated_at);
-          const TEN_MINUTES = 10 * 60 * 1000;
+          const TEN_MINUTES = 1 * 60 * 1000;
 
           if (lockAge > TEN_MINUTES) {
             // Auto-release stale lock
@@ -165,7 +165,7 @@ const FibonacciTiles = () => {
     };
 
     // Check every minute
-    const interval = setInterval(checkForStaleLocks, 60000);
+    const interval = setInterval(checkForStaleLocks, 20000);
 
     // Initial check
     checkForStaleLocks();

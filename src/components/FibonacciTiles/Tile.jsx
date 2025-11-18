@@ -54,7 +54,7 @@ const Tile = ({ tile, onTileClick }) => {
         ) : (
           <>
             <div className="price-current">${tile.price}</div>
-            <div className="weightage" title="Market Weight">
+            <div className="weightage" title="% of ownership">
               {typeof tile.weightage === 'number' ? tile.weightage.toFixed(1) : '0.0'}%
             </div>
             <div className="buy-label">Click to Buy</div>
