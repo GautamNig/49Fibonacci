@@ -1,13 +1,13 @@
-// src/components/FibonacciTiles/PurchaseModal.jsx
 import React, { useState, useRef } from 'react';
 import { uploadImage, supabase } from "../../lib/supabase";
 import PayPalButtonIntegration from "../Payment/PayPalButtonIntegration";
 
-const PurchaseModal = ({ 
-  showModal, 
-  selectedTile, 
-  onClose, 
-  onPurchase 
+const PurchaseModal = ({
+  showModal,
+  selectedTile,
+  onClose,
+  onPurchaseSuccess,
+  gameConfig // Add this prop
 }) => {
   const [purchaseForm, setPurchaseForm] = useState({
     celebrityName: '',
@@ -22,6 +22,22 @@ const PurchaseModal = ({
   const [currentStep, setCurrentStep] = useState('form');
   const [processing, setProcessing] = useState(false);
   const fileInputRef = useRef(null);
+
+React.useEffect(() => {
+  return () => {
+    // Release lock if component unmounts unexpectedly
+    if (showModal) {
+      supabase
+        .from('system_state')
+        .update({ 
+          value: 'false',
+          updated_at: new Date().toISOString()
+        })
+        .eq('key', 'purchase_in_progress')
+        .then(() => console.log('Auto-released purchase lock on unmount'));
+    }
+  };
+}, [showModal]);
 
   // Reset form when modal opens
   React.useEffect(() => {
@@ -49,60 +65,76 @@ const PurchaseModal = ({
       alert('Please enter a celebrity name');
       return;
     }
+
+    // Add validation for tile ID
+    if (selectedTile && gameConfig && selectedTile.id >= gameConfig.TOTAL_TILES) {
+      alert(`Tile #${selectedTile.id + 1} is not available in the current configuration. Please refresh the page.`);
+      return;
+    }
+
     setCurrentStep('payment');
   };
 
-  const handlePayPalApprove = async (transactionId, payerName, payerEmail) => {
-    setProcessing(true);
-    
-    try {
-      console.log('💰 PayPal payment approved:', { 
-        transactionId, 
-        payerName, 
-        payerEmail,
-        tileId: selectedTile.id,
-        celebrityName: purchaseForm.celebrityName,
-        price: selectedTile.price
-      });
 
-      // Auto-fill email if empty
-      const finalEmail = purchaseForm.email || payerEmail;
+  // Update the handlePayPalApprove function in PurchaseModal.jsx
+const handlePayPalApprove = async (transactionId, payerName, payerEmail) => {
+  setProcessing(true);
 
-      // Complete the purchase in database
-      const { data, error } = await supabase.rpc('purchase_tile', {
-        p_tile_id: selectedTile.id,
-        p_celebrity_name: purchaseForm.celebrityName,
-        p_celebrity_email: finalEmail,
-        p_profile_image_url: purchaseForm.profileImageUrl,
-        p_quote: purchaseForm.quote,
-        p_description: purchaseForm.description,
-        p_personal_message: purchaseForm.personalMessage,
-        p_purchase_price: selectedTile.price
-      });
-
-      if (error) {
-        console.error('❌ Database error:', error);
-        throw error;
-      }
-
-      console.log('✅ Purchase completed successfully. Celebrity ID:', data);
-      
-      // Show success message
-      alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
-      
-      // Call success callback
-      onPurchase();
-      
-      // Close modal
-      onClose();
-      
-    } catch (error) {
-      console.error('❌ Purchase completion error:', error);
-      alert(`Payment processing failed: ${error.message}. Your payment was successful but we couldn't assign the tile. Please contact support with transaction ID: ${transactionId}`);
-    } finally {
-      setProcessing(false);
+  try {
+    // Validate tile is within configured range using gameConfig prop
+    if (gameConfig && selectedTile.id >= gameConfig.TOTAL_TILES) {
+      throw new Error(`Tile #${selectedTile.id + 1} is not available in the current configuration.`);
     }
-  };
+
+    console.log('💰 PayPal payment approved:', {
+      transactionId,
+      payerName,
+      payerEmail,
+      tileId: selectedTile.id,
+      celebrityName: purchaseForm.celebrityName,
+      price: selectedTile.price,
+      totalTiles: gameConfig?.TOTAL_TILES
+    });
+
+    // Auto-fill email if empty
+    const finalEmail = purchaseForm.email || payerEmail;
+
+    // Complete the purchase in database
+    const { data, error } = await supabase.rpc('purchase_tile', {
+      p_tile_id: selectedTile.id,
+      p_celebrity_name: purchaseForm.celebrityName,
+      p_celebrity_email: finalEmail,
+      p_profile_image_url: purchaseForm.profileImageUrl,
+      p_quote: purchaseForm.quote,
+      p_description: purchaseForm.description,
+      p_personal_message: purchaseForm.personalMessage,
+      p_purchase_price: selectedTile.price
+    });
+
+    if (error) {
+      console.error('❌ Database error:', error);
+      throw error;
+    }
+
+    console.log('✅ Purchase completed successfully. Celebrity ID:', data);
+
+    // Show success message
+    alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
+
+    // Call success callback
+    onPurchaseSuccess();
+
+    // Close modal
+    onClose();
+
+  } catch (error) {
+    console.error('❌ Purchase completion error:', error);
+    alert(`Payment processing failed: ${error.message}. Your payment was successful but we couldn't assign the tile. Please contact support with transaction ID: ${transactionId}`);
+  } finally {
+    setProcessing(false);
+    // Lock will be released by handleCloseModal
+  }
+};
 
   const handlePayPalError = (error) => {
     console.error('❌ PayPal error:', error);
@@ -137,7 +169,7 @@ const PurchaseModal = ({
       // Upload to Supabase storage
       const publicUrl = await uploadImage(file, purchaseForm.celebrityName || 'user');
       setPurchaseForm(prev => ({ ...prev, profileImageUrl: publicUrl }));
-      
+
       console.log('✅ Image uploaded successfully:', publicUrl);
     } catch (error) {
       console.error('❌ Error uploading image:', error);
@@ -158,6 +190,10 @@ const PurchaseModal = ({
   const handleInputChange = (field, value) => {
     setPurchaseForm(prev => ({ ...prev, [field]: value }));
   };
+
+  if (!gameConfig) {
+    console.warn('PurchaseModal: gameConfig not available');
+  }
 
   if (!showModal || !selectedTile) return null;
 
@@ -181,8 +217,13 @@ const PurchaseModal = ({
                   <span className="price-value">${selectedTile.price}</span>
                 </div>
                 <p className="modal-description">
-                  Claim your spot in the 49Fibonacci universe! This tile will be forever associated with your name.
+                  Claim your spot in the {gameConfig?.TOTAL_TILES || 49}Fibonacci universe! This tile will be forever associated with your name.
                 </p>
+
+                {/* Add config info for debugging */}
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                  Configuration: {gameConfig?.TOTAL_TILES || 49} tiles, {gameConfig?.GRID_COLUMNS || 7} columns
+                </div>
               </div>
 
               <div className="form-group">
@@ -271,8 +312,8 @@ const PurchaseModal = ({
                 <button type="button" className="cancel-button" onClick={onClose}>
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="purchase-button"
                   disabled={!purchaseForm.celebrityName.trim()}
                 >
@@ -328,9 +369,9 @@ const PurchaseModal = ({
               </div>
 
               <div className="modal-footer">
-                <button 
-                  type="button" 
-                  className="cancel-button" 
+                <button
+                  type="button"
+                  className="cancel-button"
                   onClick={() => setCurrentStep('form')}
                   disabled={processing}
                 >

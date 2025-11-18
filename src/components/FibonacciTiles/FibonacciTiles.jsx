@@ -1,37 +1,38 @@
 // src/components/FibonacciTiles/FibonacciTiles.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { getFibonacciPrice } from '../../utils/fibonacci';
-import { supabase, listFilesInBucket } from '../../lib/supabase';
+import {
+  getFibonacciPrice,
+  generateInitialTiles,
+  initializeConfig,
+  GAME_CONFIG
+} from '../../config/gameConfig';
+import { supabase } from '../../lib/supabase';
 import TileGrid from './TileGrid';
 import InfoPanel from './InfoPanel';
 import PurchaseModal from './PurchaseModal';
 import './FibonacciTiles.css';
 
 const FibonacciTiles = () => {
-  const TOTAL_TILES = 49;
-  
   const [tiles, setTiles] = useState([]);
   const [totalPurchased, setTotalPurchased] = useState(0);
   const [currentPrice, setCurrentPrice] = useState(1);
   const [selectedTile, setSelectedTile] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [purchaseForm, setPurchaseForm] = useState({
-    celebrityName: '',
-    email: '',
-    profileImageUrl: '',
-    quote: '',
-    description: '',
-    personalMessage: ''
-  });
-  const [bucketFiles, setBucketFiles] = useState([]);
+  const [gameConfig, setGameConfig] = useState(GAME_CONFIG);
+  const [purchaseInProgress, setPurchaseInProgress] = useState(false);
 
-  // Load data from Supabase
+  // Load config and data from Supabase
   const loadGameData = useCallback(async () => {
     try {
       console.log('🔄 Loading game data from database...');
-      
-      // Load tiles with celebrity data
+
+      // Initialize config first
+      const config = await initializeConfig();
+      setGameConfig(config);
+      console.log('✅ Config loaded:', config);
+
+      // Load ALL tiles with celebrity data
       const { data: tilesData, error: tilesError } = await supabase
         .from('tiles')
         .select(`
@@ -39,6 +40,7 @@ const FibonacciTiles = () => {
           is_purchased,
           purchase_price,
           personal_message,
+          weightage,
           celebrities (
             name,
             email,
@@ -59,63 +61,70 @@ const FibonacciTiles = () => {
 
       if (gameError) throw gameError;
 
-      console.log('✅ Data loaded:', { 
-        tiles: tilesData?.length, 
-        totalPurchased: gameState.total_purchased 
+      console.log('✅ Data loaded:', {
+        tilesInDB: tilesData?.length,
+        totalPurchased: gameState.total_purchased,
+        configTiles: config.TOTAL_TILES
       });
 
-      // Transform tiles data
-      const transformedTiles = tilesData.map(tile => ({
-        id: tile.id,
-        owner: tile.celebrities?.name || null,
-        price: tile.is_purchased ? tile.purchase_price : getFibonacciPrice(gameState.total_purchased),
-        isPurchased: tile.is_purchased,
-        personal_message: tile.personal_message,
-        celebrity: tile.celebrities
-      }));
+      // Filter tiles to only show the configured number (0 to TOTAL_TILES-1)
+      const filteredTiles = tilesData
+        .filter(tile => tile.id < config.TOTAL_TILES)
+        .map(tile => {
+          const price = tile.is_purchased ? tile.purchase_price : getFibonacciPrice(gameState.total_purchased);
 
-      setTiles(transformedTiles);
+          return {
+            id: tile.id,
+            owner: tile.celebrities?.name || null,
+            price: price,
+            weightage: tile.weightage || 0,
+            isPurchased: tile.is_purchased,
+            personal_message: tile.personal_message,
+            celebrity: tile.celebrities
+          };
+        });
+
+      console.log('🔄 Filtered tiles for display:', {
+        totalInDB: tilesData.length,
+        configuredTiles: config.TOTAL_TILES,
+        displayedTiles: filteredTiles.length,
+        tileIds: filteredTiles.map(t => t.id)
+      });
+
+      setTiles(filteredTiles);
       setTotalPurchased(gameState.total_purchased);
       setCurrentPrice(getFibonacciPrice(gameState.total_purchased));
     } catch (error) {
       console.error('❌ Error loading game data:', error);
-      initializeLocalTiles();
+      // Initialize with local tiles using current config
+      const localTiles = await generateInitialTiles();
+      setTiles(localTiles);
+      setTotalPurchased(0);
+      setCurrentPrice(1);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initialize with local state as fallback
-  const initializeLocalTiles = useCallback(() => {
-    console.log('🔄 Initializing local tiles as fallback');
-    const initialTiles = Array(TOTAL_TILES).fill(null).map((_, index) => ({
-      id: index,
-      owner: null,
-      price: 1,
-      isPurchased: false,
-      personal_message: '',
-      celebrity: null
-    }));
-    setTiles(initialTiles);
-    setTotalPurchased(0);
-    setCurrentPrice(1);
-  }, [TOTAL_TILES]);
-
   // Setup real-time subscriptions
   useEffect(() => {
     console.log('🔌 Setting up real-time subscriptions...');
-    
-    // Load initial data
+
     loadGameData();
-    
-    // Subscribe to real-time updates
+
     const subscription = supabase
-      .channel('tiles-changes')
-      .on('postgres_changes', 
+      .channel('game-changes')
+      .on('postgres_changes',
         { event: '*', schema: 'public', table: 'tiles' },
-        () => {
-          loadGameData();
-        }
+        () => loadGameData()
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'game_state' },
+        () => loadGameData()
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'app_config' },
+        () => loadGameData()
       )
       .subscribe();
 
@@ -124,78 +133,126 @@ const FibonacciTiles = () => {
     };
   }, [loadGameData]);
 
-  const handleTileClick = (tile) => {
-    if (tile.isPurchased) return;
-    setSelectedTile(tile);
-    setShowModal(true);
-    setPurchaseForm({
-      celebrityName: '',
-      email: '',
-      profileImageUrl: '',
-      quote: '',
-      description: '',
-      personalMessage: ''
-    });
-  };
+  useEffect(() => {
+    const checkForStaleLocks = async () => {
+      try {
+        const { data: state } = await supabase
+          .from('system_state')
+          .select('value, updated_at')
+          .eq('key', 'purchase_in_progress')
+          .single();
 
-  const handlePurchase = async () => {
-    if (!selectedTile || !purchaseForm.celebrityName.trim()) return;
+        if (state && state.value === 'true') {
+          const lockAge = new Date() - new Date(state.updated_at);
+          const TEN_MINUTES = 10 * 60 * 1000;
 
-    try {
-      console.log('💰 Starting purchase process...', {
-        tileId: selectedTile.id,
-        celebrityName: purchaseForm.celebrityName,
-        price: selectedTile.price
-      });
+          if (lockAge > TEN_MINUTES) {
+            // Auto-release stale lock
+            await supabase
+              .from('system_state')
+              .update({
+                value: 'false',
+                updated_at: new Date().toISOString()
+              })
+              .eq('key', 'purchase_in_progress');
 
-      // Call the database function to handle purchase
-      const { data, error } = await supabase.rpc('purchase_tile', {
-        p_tile_id: selectedTile.id,
-        p_celebrity_name: purchaseForm.celebrityName,
-        p_celebrity_email: purchaseForm.email,
-        p_profile_image_url: purchaseForm.profileImageUrl,
-        p_quote: purchaseForm.quote,
-        p_description: purchaseForm.description,
-        p_personal_message: purchaseForm.personalMessage,
-        p_purchase_price: selectedTile.price
-      });
-
-      if (error) {
-        console.error('❌ RPC Error:', error);
-        throw error;
+            console.log('Auto-released stale purchase lock');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking stale locks:', error);
       }
+    };
 
-      console.log('✅ Purchase successful, celebrity ID:', data);
-      
-      // Show success message
-      alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
-      
-      // Close modal
-      setShowModal(false);
-      setSelectedTile(null);
+    // Check every minute
+    const interval = setInterval(checkForStaleLocks, 60000);
 
-      // Reload data and bucket files
-      setTimeout(() => {
-        loadGameData();
-        listFilesInBucket().then(setBucketFiles);
-      }, 500);
-      
+    // Initial check
+    checkForStaleLocks();
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Purchase lock functions
+  const checkPurchaseLock = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('system_state')
+        .select('value')
+        .eq('key', 'purchase_in_progress')
+        .single();
+
+      if (error) throw error;
+      return data.value === 'true';
     } catch (error) {
-      console.error('❌ Error purchasing tile:', error);
-      alert(`❌ Error purchasing tile: ${error.message}. Please try again.`);
+      console.error('Error checking purchase lock:', error);
+      return false;
     }
   };
 
-  const handleFormChange = (field, value) => {
-    setPurchaseForm(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const acquirePurchaseLock = async () => {
+    try {
+      const { error } = await supabase
+        .from('system_state')
+        .update({
+          value: 'true',
+          updated_at: new Date().toISOString()
+        })
+        .eq('key', 'purchase_in_progress');
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error acquiring purchase lock:', error);
+      return false;
+    }
   };
 
+  const releasePurchaseLock = async () => {
+    try {
+      const { error } = await supabase
+        .from('system_state')
+        .update({
+          value: 'false',
+          updated_at: new Date().toISOString()
+        })
+        .eq('key', 'purchase_in_progress');
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error releasing purchase lock:', error);
+    }
+  };
+
+  // Update handleTileClick function
+  const handleTileClick = async (tile) => {
+    if (tile.isPurchased) return;
+
+    // Check if purchase is already in progress
+    const isLocked = await checkPurchaseLock();
+    if (isLocked) {
+      alert('Another purchase is currently in progress. Please try again in a few moments.');
+      return;
+    }
+
+    // Try to acquire lock
+    const lockAcquired = await acquirePurchaseLock();
+    if (!lockAcquired) {
+      alert('Failed to start purchase. Please try again.');
+      return;
+    }
+
+    setPurchaseInProgress(true);
+    setSelectedTile(tile);
+    setShowModal(true);
+  };
+
+  // Update modal close handler
   const handleCloseModal = () => {
     setShowModal(false);
     setSelectedTile(null);
+    setPurchaseInProgress(false);
+    releasePurchaseLock(); // Always release lock when modal closes
   };
 
   if (loading) {
@@ -215,10 +272,13 @@ const FibonacciTiles = () => {
     <div className="fibonacci-app">
       <div className="stars"></div>
       <div className="twinkling"></div>
-      
+
       <header className="app-header">
-        <h1>49Fibonacci Tiles</h1>
+        <h1>{gameConfig.TOTAL_TILES}Fibonacci Tiles</h1>
         <div className="subtitle">Where Every Purchase Changes the Universe</div>
+        <div className="config-info">
+          Total Tiles: {gameConfig.TOTAL_TILES} | Grid: {gameConfig.GRID_COLUMNS}x{Math.ceil(gameConfig.TOTAL_TILES / gameConfig.GRID_COLUMNS)} | Current Price: ${currentPrice}
+        </div>
       </header>
 
       <div className="app-container">
@@ -227,22 +287,23 @@ const FibonacciTiles = () => {
           totalPurchased={totalPurchased}
           currentPrice={currentPrice}
           onTileClick={handleTileClick}
+          gameConfig={gameConfig}
         />
 
         <InfoPanel
           tiles={tiles}
           totalPurchased={totalPurchased}
           currentPrice={currentPrice}
+          gameConfig={gameConfig}
         />
       </div>
 
       <PurchaseModal
         showModal={showModal}
         selectedTile={selectedTile}
-        purchaseForm={purchaseForm}
         onClose={handleCloseModal}
-        onPurchase={handlePurchase}
-        onFormChange={handleFormChange}
+        onPurchaseSuccess={loadGameData}
+        gameConfig={gameConfig}
       />
     </div>
   );
