@@ -3,10 +3,12 @@ import { supabase } from '../lib/supabase';
 
 // Default fallback values
 const DEFAULT_CONFIG = {
-  TOTAL_TILES: 49,
-  GRID_COLUMNS: 7,
+  TOTAL_TILES: 5,
+  GRID_COLUMNS: 5,
   STARTING_PRICE: 1,
-  TIMEOUT_DURATION: 10 * 60 // 10 min
+  TIMEOUT_DURATION: 10 * 60, // 10 min
+  TILE_RANGE_START: 45,
+  TILE_RANGE_END: 49
 };
 
 // Function to load config from database
@@ -23,7 +25,9 @@ export const loadGameConfig = async () => {
       TOTAL_TILES: data.total_tiles,
       GRID_COLUMNS: data.grid_columns,
       STARTING_PRICE: DEFAULT_CONFIG.STARTING_PRICE,
-      TIMEOUT_DURATION: DEFAULT_CONFIG.TIMEOUT_DURATION
+      TIMEOUT_DURATION: DEFAULT_CONFIG.TIMEOUT_DURATION,
+      TILE_RANGE_START: data.tile_range_start,
+      TILE_RANGE_END: data.tile_range_end
     };
   } catch (error) {
     console.error('Error loading game config, using defaults:', error);
@@ -41,15 +45,22 @@ export const getFibonacciPrice = (n) => {
   return b;
 };
 
-// Generate tiles based on config
+// Get current price based on total purchased and tile range
+export const getCurrentPrice = (totalPurchased, tileRangeStart) => {
+  return getFibonacciPrice(tileRangeStart + totalPurchased);
+};
+
+// Generate tiles based on config and range
 export const generateInitialTiles = async () => {
   const config = await loadGameConfig();
   const tiles = [];
-  for (let i = 0; i < config.TOTAL_TILES; i++) {
+  
+  // Only generate tiles within the configured range
+  for (let i = config.TILE_RANGE_START; i <= config.TILE_RANGE_END; i++) {
     tiles.push({
       id: i,
       owner: null,
-      price: getFibonacciPrice(0),
+      price: getCurrentPrice(0, config.TILE_RANGE_START),
       weightage: 0,
       isPurchased: false
     });
@@ -57,11 +68,11 @@ export const generateInitialTiles = async () => {
   return tiles;
 };
 
-// Calculate total universe value
+// Calculate total universe value for configured range
 export const calculateTotalUniverseValue = async () => {
   const config = await loadGameConfig();
   let total = 0;
-  for (let i = 0; i < config.TOTAL_TILES; i++) {
+  for (let i = config.TILE_RANGE_START; i <= config.TILE_RANGE_END; i++) {
     total += getFibonacciPrice(i);
   }
   return total;

@@ -428,7 +428,7 @@
   background: rgba(255, 255, 255, 0.05);
   border-radius: 3px; /* Reduced */
   transition: all 0.3s ease;
-  font-size: 0.65em; /* Reduced */
+  font-size: 0.95em; /* Reduced */
   position: relative;
   min-height: 20px; /* Reduced */
 }
@@ -1424,4 +1424,70 @@
 html, body {
   overflow-x: hidden;
   max-width: 100%;
+}
+
+/* Circular Grid Styles */
+.circular-grid-container {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 10px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  width: auto;
+  max-width: 100%;
+}
+
+.circular-grid {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bonfire-animation {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  filter: drop-shadow(0 0 20px rgba(255, 165, 0, 0.7));
+}
+
+.circular-tile {
+  transition: all 0.3s ease;
+}
+
+.circular-tile:hover {
+  transform: translate(-50%, -50%) scale(1.1);
+  z-index: 10;
+}
+
+/* Adjust tile sizes for circular layout */
+.circular-grid .tile {
+  width: 80px;
+  height: 80px;
+  min-width: 80px;
+  min-height: 80px;
+}
+
+.circular-grid .owner {
+  font-size: 6px;
+}
+
+.circular-grid .price-current,
+.circular-grid .price-paid {
+  font-size: 10px;
+}
+
+.circular-grid .weightage {
+  font-size: 10px;
+}
+
+.circular-grid .buy-label {
+  font-size: 10px;
 }

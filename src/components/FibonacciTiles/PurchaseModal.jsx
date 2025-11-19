@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { uploadImage, supabase } from "../../lib/supabase";
 import PayPalButtonIntegration from "../Payment/PayPalButtonIntegration";
+import { getCurrentPrice } from '../../config/gameConfig';
 
 const PurchaseModal = ({
   showModal,
@@ -134,16 +135,17 @@ const PurchaseModal = ({
       return;
     }
 
-    // Add validation for tile ID
-    if (selectedTile && gameConfig && selectedTile.id >= gameConfig.TOTAL_TILES) {
-      alert(`Tile #${selectedTile.id + 1} is not available in the current configuration. Please refresh the page.`);
+    // Add validation for tile ID within configured range
+    if (selectedTile && gameConfig && 
+        (selectedTile.id < gameConfig.TILE_RANGE_START || selectedTile.id > gameConfig.TILE_RANGE_END)) {
+      alert(`Tile #${selectedTile.id} is not available in the current configuration (${gameConfig.TILE_RANGE_START}-${gameConfig.TILE_RANGE_END}). Please refresh the page.`);
       return;
     }
 
     setCurrentStep('payment');
   };
 
-  // Updated handlePayPalApprove with lock validation
+  // Updated handlePayPalApprove with range validation
   const handlePayPalApprove = async (transactionId, payerName, payerEmail) => {
     setProcessing(true);
 
@@ -167,9 +169,10 @@ const PurchaseModal = ({
         throw new Error('Purchase session expired due to inactivity.');
       }
 
-      // Validate tile is within configured range using gameConfig prop
-      if (gameConfig && selectedTile.id >= gameConfig.TOTAL_TILES) {
-        throw new Error(`Tile #${selectedTile.id + 1} is not available in the current configuration.`);
+      // Validate tile is within configured range
+      if (gameConfig && 
+          (selectedTile.id < gameConfig.TILE_RANGE_START || selectedTile.id > gameConfig.TILE_RANGE_END)) {
+        throw new Error(`Tile #${selectedTile.id} is not available in the current configuration (${gameConfig.TILE_RANGE_START}-${gameConfig.TILE_RANGE_END}).`);
       }
 
       console.log('💰 PayPal payment approved:', {
@@ -179,7 +182,8 @@ const PurchaseModal = ({
         tileId: selectedTile.id,
         celebrityName: purchaseForm.celebrityName,
         price: selectedTile.price,
-        totalTiles: gameConfig?.TOTAL_TILES
+        tileRange: `${gameConfig?.TILE_RANGE_START}-${gameConfig?.TILE_RANGE_END}`,
+        fibonacciPosition: gameConfig.TILE_RANGE_START
       });
 
       // Auto-fill email if empty
@@ -205,7 +209,7 @@ const PurchaseModal = ({
       console.log('✅ Purchase completed successfully. Celebrity ID:', data);
 
       // Show success message
-      alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
+      alert(`🎉 Congratulations! Tile #${selectedTile.id} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
 
       // Call success callback
       onPurchaseSuccess();
@@ -314,12 +318,14 @@ const PurchaseModal = ({
 
   if (!showModal || !selectedTile) return null;
 
+  const currentFibonacciPosition = gameConfig.TILE_RANGE_START;
+
   return (
     <div className="modal-overlay">
       <div className="modal-content">
         <div className="modal-header">
           <h2>
-            {currentStep === 'form' && `Purchase Tile #${selectedTile.id + 1}`}
+            {currentStep === 'form' && `Purchase Tile #${selectedTile.id}`}
             {currentStep === 'payment' && 'Complete Payment'}
           </h2>
           <div className="session-timer">
@@ -339,12 +345,15 @@ const PurchaseModal = ({
                   <span className="price-value">${selectedTile.price}</span>
                 </div>
                 <p className="modal-description">
-                  Claim your spot in the {gameConfig?.TOTAL_TILES || 49}Fibonacci universe! This tile will be forever associated with your name.
+                  Claim your spot in the Fibonacci universe! This tile will be forever associated with your name.
+                  <br />
+                  <strong>Fibonacci Position: #{currentFibonacciPosition}</strong>
                 </p>
 
                 {/* Add config info for debugging */}
                 <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
-                  Configuration: {gameConfig?.TOTAL_TILES || 49} tiles, {gameConfig?.GRID_COLUMNS || 7} columns
+                  Configuration: Tiles {gameConfig?.TILE_RANGE_START}-{gameConfig?.TILE_RANGE_END} | 
+                  Grid: {gameConfig?.GRID_COLUMNS} columns
                 </div>
               </div>
 
@@ -411,7 +420,7 @@ const PurchaseModal = ({
                 <label htmlFor="description">About You (Optional)</label>
                 <textarea
                   id="description"
-                  placeholder="Tell us about yourself, your achievements, or why you're joining 49Fibonacci"
+                  placeholder="Tell us about yourself, your achievements, or why you're joining Fibonacci Tiles"
                   rows="3"
                   value={purchaseForm.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
@@ -452,7 +461,11 @@ const PurchaseModal = ({
                 <div className="purchase-summary">
                   <div className="summary-item">
                     <span>Tile Number:</span>
-                    <strong>#{selectedTile.id + 1}</strong>
+                    <strong>#{selectedTile.id}</strong>
+                  </div>
+                  <div className="summary-item">
+                    <span>Fibonacci Position:</span>
+                    <strong>#{currentFibonacciPosition}</strong>
                   </div>
                   <div className="summary-item">
                     <span>Price:</span>
@@ -480,7 +493,7 @@ const PurchaseModal = ({
 
               <PayPalButtonIntegration
                 amount={selectedTile.price}
-                description={`49Fibonacci Tile #${selectedTile.id + 1} - ${purchaseForm.celebrityName}`}
+                description={`Fibonacci Tile #${selectedTile.id} - ${purchaseForm.celebrityName}`}
                 onApprove={handlePayPalApprove}
                 onError={handlePayPalError}
                 disabled={processing}

@@ -1,22 +1,27 @@
 // src/components/FibonacciTiles/InfoPanel.jsx
 import React from 'react';
-import { getFibonacciPrice } from '../../config/gameConfig';
+import { getFibonacciPrice, getCurrentPrice } from '../../config/gameConfig';
 
 const StatsCard = ({ totalPurchased, currentPrice, gameConfig }) => {
-  const nextPrice = getFibonacciPrice(totalPurchased + 1);
+  const nextPrice = getCurrentPrice(totalPurchased + 1, gameConfig.TILE_RANGE_START);
   const remainingTiles = gameConfig.TOTAL_TILES - totalPurchased;
   
-  // Calculate total cost of all tiles
+  // Calculate total cost of all tiles in the configured range
   let totalCostAllTiles = 0;
-  for (let i = 0; i < gameConfig.TOTAL_TILES; i++) {
+  for (let i = gameConfig.TILE_RANGE_START; i <= gameConfig.TILE_RANGE_END; i++) {
     totalCostAllTiles += getFibonacciPrice(i);
   }
   
   const currentWeightage = (currentPrice / totalCostAllTiles) * 100;
+  const currentFibonacciPosition = gameConfig.TILE_RANGE_START + totalPurchased;
 
   return (
     <div className="stats-card">
       <h3>🌌 Universe Stats</h3>
+      <div className="stat-item">
+        <span>Tile Range:</span>
+        <span>{gameConfig.TILE_RANGE_START}-{gameConfig.TILE_RANGE_END}</span>
+      </div>
       <div className="stat-item">
         <span>Tiles Purchased:</span>
         <span>{totalPurchased}/{gameConfig.TOTAL_TILES}</span>
@@ -24,6 +29,10 @@ const StatsCard = ({ totalPurchased, currentPrice, gameConfig }) => {
       <div className="stat-item">
         <span>Remaining:</span>
         <span>{remainingTiles} tiles</span>
+      </div>
+      <div className="stat-item">
+        <span>Current Fibonacci Position:</span>
+        <span>#{currentFibonacciPosition}</span>
       </div>
       <div className="stat-item">
         <span>Current Price:</span>
@@ -67,20 +76,31 @@ const LeaderboardCard = ({ leaderboard }) => {
   );
 };
 
-const ProgressionCard = ({ totalPurchased }) => {
+const ProgressionCard = ({ totalPurchased, gameConfig }) => {
+  const currentFibonacciPosition = gameConfig.TILE_RANGE_START + totalPurchased;
+  
   return (
     <div className="progression-card">
       <h3>📈 Fibonacci Journey</h3>
       <div className="progression-list">
-        {Array.from({ length: 49 }, (_, i) => totalPurchased + i).map(step => (
-          <div 
-            key={step} 
-            className={`progression-item ${step === totalPurchased ? 'current' : ''}`}
-          >
-            <span>After {step} purchases:</span>
-            <span>${getFibonacciPrice(step)}</span>
-          </div>
-        ))}
+        {Array.from({ length: Math.min(10, gameConfig.TOTAL_TILES - totalPurchased) }, (_, i) => {
+          const step = totalPurchased + i;
+          const fibonacciPosition = gameConfig.TILE_RANGE_START + step;
+          const price = getFibonacciPrice(fibonacciPosition);
+          
+          return (
+            <div 
+              key={step} 
+              className={`progression-item ${step === totalPurchased ? 'current' : ''}`}
+            >
+              {step === 0 ? <span className="step-number"></span> : <span className="step-number">After {step} purchases:</span>}
+              <span className="step-price">${price}</span>
+              {step === totalPurchased && (
+                <span className="current-badge">Current</span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -98,7 +118,6 @@ const InfoPanel = ({ tiles, totalPurchased, currentPrice, gameConfig }) => {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
 
-
   return (
     <div className="info-panel">
       <StatsCard 
@@ -107,7 +126,7 @@ const InfoPanel = ({ tiles, totalPurchased, currentPrice, gameConfig }) => {
         gameConfig={gameConfig}
       />
       <LeaderboardCard leaderboard={leaderboard} />
-      <ProgressionCard totalPurchased={totalPurchased} />
+      <ProgressionCard totalPurchased={totalPurchased} gameConfig={gameConfig} />
     </div>
   );
 };
