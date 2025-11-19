@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { uploadImage, supabase } from "../../lib/supabase";
 import PayPalButtonIntegration from "../Payment/PayPalButtonIntegration";
 
@@ -7,7 +7,7 @@ const PurchaseModal = ({
   selectedTile,
   onClose,
   onPurchaseSuccess,
-  gameConfig // Add this prop
+  gameConfig
 }) => {
   const [purchaseForm, setPurchaseForm] = useState({
     celebrityName: '',
@@ -21,26 +21,94 @@ const PurchaseModal = ({
   const [imagePreview, setImagePreview] = useState(null);
   const [currentStep, setCurrentStep] = useState('form');
   const [processing, setProcessing] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(gameConfig?.TIMEOUT_DURATION);
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
   const fileInputRef = useRef(null);
+  const timeoutRef = useRef(null);
+  const lockSubscriptionRef = useRef(null);
 
-React.useEffect(() => {
-  return () => {
-    // Release lock if component unmounts unexpectedly
-    if (showModal) {
-      supabase
-        .from('system_state')
-        .update({ 
-          value: 'false',
-          updated_at: new Date().toISOString()
-        })
-        .eq('key', 'purchase_in_progress')
-        .then(() => console.log('Auto-released purchase lock on unmount'));
+  // Handle auto-close due to timeout
+  const handleAutoClose = async () => {
+    if (timeoutRef.current) {
+      clearInterval(timeoutRef.current);
     }
+    
+    if (lockSubscriptionRef.current) {
+      lockSubscriptionRef.current.unsubscribe();
+    }
+    
+    onClose();
   };
-}, [showModal]);
+
+  // Start countdown timer when modal opens
+  useEffect(() => {
+    if (showModal) {
+      setTimeLeft(gameConfig?.TIMEOUT_DURATION); // 1 minutes
+      setShowTimeoutWarning(false);
+      
+      // Start countdown
+      timeoutRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 60 && prev > 0) {
+            setShowTimeoutWarning(true); // Show warning at 1 minute
+          }
+          if (prev <= 0) {
+            handleAutoClose();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Subscribe to lock changes
+      lockSubscriptionRef.current = supabase
+        .channel('lock-changes')
+        .on('postgres_changes',
+          { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'system_state',
+            filter: 'key=eq.purchase_in_progress'
+          },
+          (payload) => {
+            // If lock was released by timeout, close modal
+            if (payload.new.value === 'false') {
+              alert('Purchase session was released due to system timeout.');
+              handleAutoClose();
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        if (timeoutRef.current) {
+          clearInterval(timeoutRef.current);
+        }
+        if (lockSubscriptionRef.current) {
+          lockSubscriptionRef.current.unsubscribe();
+        }
+      };
+    }
+  }, [showModal]);
+
+  // Release lock on unmount
+  useEffect(() => {
+    return () => {
+      if (showModal) {
+        supabase
+          .from('system_state')
+          .update({ 
+            value: 'false',
+            updated_at: new Date().toISOString()
+          })
+          .eq('key', 'purchase_in_progress')
+          .then(() => console.log('Auto-released purchase lock on unmount'));
+      }
+    };
+  }, [showModal]);
 
   // Reset form when modal opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (showModal) {
       setPurchaseForm({
         celebrityName: '',
@@ -75,66 +143,84 @@ React.useEffect(() => {
     setCurrentStep('payment');
   };
 
+  // Updated handlePayPalApprove with lock validation
+  const handlePayPalApprove = async (transactionId, payerName, payerEmail) => {
+    setProcessing(true);
 
-  // Update the handlePayPalApprove function in PurchaseModal.jsx
-const handlePayPalApprove = async (transactionId, payerName, payerEmail) => {
-  setProcessing(true);
+    try {
+      // Validate lock still belongs to this user
+      const { data: lockState, error: lockError } = await supabase
+        .from('system_state')
+        .select('value, updated_at')
+        .eq('key', 'purchase_in_progress')
+        .single();
 
-  try {
-    // Validate tile is within configured range using gameConfig prop
-    if (gameConfig && selectedTile.id >= gameConfig.TOTAL_TILES) {
-      throw new Error(`Tile #${selectedTile.id + 1} is not available in the current configuration.`);
+      if (lockError || !lockState || lockState.value === 'false') {
+        throw new Error('Purchase session expired. Please try again.');
+      }
+
+      // Check if lock is stale (more than 10 minutes old)
+      const lockAge = new Date() - new Date(lockState.updated_at);
+      const ONE_MIN = gameConfig.TIMEOUT_DURATION * 1000;
+      
+      if (lockAge > ONE_MIN) {
+        throw new Error('Purchase session expired due to inactivity.');
+      }
+
+      // Validate tile is within configured range using gameConfig prop
+      if (gameConfig && selectedTile.id >= gameConfig.TOTAL_TILES) {
+        throw new Error(`Tile #${selectedTile.id + 1} is not available in the current configuration.`);
+      }
+
+      console.log('💰 PayPal payment approved:', {
+        transactionId,
+        payerName,
+        payerEmail,
+        tileId: selectedTile.id,
+        celebrityName: purchaseForm.celebrityName,
+        price: selectedTile.price,
+        totalTiles: gameConfig?.TOTAL_TILES
+      });
+
+      // Auto-fill email if empty
+      const finalEmail = purchaseForm.email || payerEmail;
+
+      // Complete the purchase in database
+      const { data, error } = await supabase.rpc('purchase_tile', {
+        p_tile_id: selectedTile.id,
+        p_celebrity_name: purchaseForm.celebrityName,
+        p_celebrity_email: finalEmail,
+        p_profile_image_url: purchaseForm.profileImageUrl,
+        p_quote: purchaseForm.quote,
+        p_description: purchaseForm.description,
+        p_personal_message: purchaseForm.personalMessage,
+        p_purchase_price: selectedTile.price
+      });
+
+      if (error) {
+        console.error('❌ Database error:', error);
+        throw error;
+      }
+
+      console.log('✅ Purchase completed successfully. Celebrity ID:', data);
+
+      // Show success message
+      alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
+
+      // Call success callback
+      onPurchaseSuccess();
+
+      // Close modal
+      onClose();
+
+    } catch (error) {
+      console.error('❌ Purchase completion error:', error);
+      alert(`Payment processing failed: ${error.message}.`);
+      onClose();
+    } finally {
+      setProcessing(false);
     }
-
-    console.log('💰 PayPal payment approved:', {
-      transactionId,
-      payerName,
-      payerEmail,
-      tileId: selectedTile.id,
-      celebrityName: purchaseForm.celebrityName,
-      price: selectedTile.price,
-      totalTiles: gameConfig?.TOTAL_TILES
-    });
-
-    // Auto-fill email if empty
-    const finalEmail = purchaseForm.email || payerEmail;
-
-    // Complete the purchase in database
-    const { data, error } = await supabase.rpc('purchase_tile', {
-      p_tile_id: selectedTile.id,
-      p_celebrity_name: purchaseForm.celebrityName,
-      p_celebrity_email: finalEmail,
-      p_profile_image_url: purchaseForm.profileImageUrl,
-      p_quote: purchaseForm.quote,
-      p_description: purchaseForm.description,
-      p_personal_message: purchaseForm.personalMessage,
-      p_purchase_price: selectedTile.price
-    });
-
-    if (error) {
-      console.error('❌ Database error:', error);
-      throw error;
-    }
-
-    console.log('✅ Purchase completed successfully. Celebrity ID:', data);
-
-    // Show success message
-    alert(`🎉 Congratulations! Tile #${selectedTile.id + 1} has been purchased by ${purchaseForm.celebrityName} for $${selectedTile.price}`);
-
-    // Call success callback
-    onPurchaseSuccess();
-
-    // Close modal
-    onClose();
-
-  } catch (error) {
-    console.error('❌ Purchase completion error:', error);
-    alert(`Payment processing failed: ${error.message}. Your payment was successful but we couldn't assign the tile. Please contact support with transaction ID: ${transactionId}`);
-  } finally {
-    setProcessing(false);
-    // Lock will be released by handleCloseModal
-  }
-};
+  };
 
   const handlePayPalError = (error) => {
     console.error('❌ PayPal error:', error);
@@ -191,6 +277,37 @@ const handlePayPalApprove = async (transactionId, payerName, payerEmail) => {
     setPurchaseForm(prev => ({ ...prev, [field]: value }));
   };
 
+  // Format time for display
+  const formatTime = (seconds) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  // Render timeout warning
+  const renderTimeoutWarning = () => {
+    if (!showTimeoutWarning) return null;
+    
+    return (
+      <div className="timeout-warning">
+        <div className="warning-content">
+          <div className="warning-icon">⚠️</div>
+          <div className="warning-text">
+            <strong>Session expiring in {formatTime(timeLeft)}!</strong>
+            <br />
+            Complete your purchase soon or your session will be released.
+          </div>
+          <button 
+            className="warning-dismiss"
+            onClick={() => setShowTimeoutWarning(false)}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   if (!gameConfig) {
     console.warn('PurchaseModal: gameConfig not available');
   }
@@ -205,10 +322,15 @@ const handlePayPalApprove = async (transactionId, payerName, payerEmail) => {
             {currentStep === 'form' && `Purchase Tile #${selectedTile.id + 1}`}
             {currentStep === 'payment' && 'Complete Payment'}
           </h2>
+          <div className="session-timer">
+            Time left: {formatTime(timeLeft)}
+          </div>
           <button className="close-button" onClick={onClose}>×</button>
         </div>
 
         <div className="modal-body">
+          {renderTimeoutWarning()}
+          
           {currentStep === 'form' && (
             <form onSubmit={handleFormSubmit}>
               <div className="purchase-info">

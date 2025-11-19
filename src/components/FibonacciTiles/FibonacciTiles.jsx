@@ -144,9 +144,8 @@ const FibonacciTiles = () => {
 
         if (state && state.value === 'true') {
           const lockAge = new Date() - new Date(state.updated_at);
-          const TEN_MINUTES = 1 * 60 * 1000;
 
-          if (lockAge > TEN_MINUTES) {
+          if (lockAge > gameConfig.TIMEOUT_DURATION * 1000) {
             // Auto-release stale lock
             await supabase
               .from('system_state')
@@ -165,7 +164,7 @@ const FibonacciTiles = () => {
     };
 
     // Check every minute
-    const interval = setInterval(checkForStaleLocks, 20000);
+    const interval = setInterval(checkForStaleLocks, gameConfig.TIMEOUT_DURATION * 1000);
 
     // Initial check
     checkForStaleLocks();

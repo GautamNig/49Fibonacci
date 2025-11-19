@@ -5,7 +5,8 @@ import { supabase } from '../lib/supabase';
 const DEFAULT_CONFIG = {
   TOTAL_TILES: 49,
   GRID_COLUMNS: 7,
-  STARTING_PRICE: 1
+  STARTING_PRICE: 1,
+  TIMEOUT_DURATION: 10 * 60 // 10 min
 };
 
 // Function to load config from database
@@ -21,7 +22,8 @@ export const loadGameConfig = async () => {
     return {
       TOTAL_TILES: data.total_tiles,
       GRID_COLUMNS: data.grid_columns,
-      STARTING_PRICE: DEFAULT_CONFIG.STARTING_PRICE
+      STARTING_PRICE: DEFAULT_CONFIG.STARTING_PRICE,
+      TIMEOUT_DURATION: DEFAULT_CONFIG.TIMEOUT_DURATION
     };
   } catch (error) {
     console.error('Error loading game config, using defaults:', error);
